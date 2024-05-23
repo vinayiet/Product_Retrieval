@@ -1,6 +1,7 @@
+import pandas as pd
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
@@ -33,7 +34,7 @@ try:
 
     # Ensure we have at least 30 shirts by clicking the "LOAD MORE" button if needed
     product_info = []
-    while len(product_info) < 30:
+    while len(product_info) < 100:
         # Scroll down to load more products
         last_height = driver.execute_script("return document.body.scrollHeight")
         while True:
@@ -64,33 +65,62 @@ try:
                 product_info.append((title, detail))
 
         # If we have reached 30 unique products, break the loop
-        if len(product_info) >= 30:
+        if len(product_info) >= 100:
             break
 
     # Print the number of unique products found
     print(f"Number of unique products found: {len(product_info)}")
 
-    # Click on each product description to open it in a new tab
-    for idx, (title, detail) in enumerate(product_info[:30], start=1):
-        print(f"{idx}. Title: {title}\n   Description: {detail}\n")
+    # Click on each product detail to open it in a new tab
+    data = []  # List to store scraped data
+    for idx, (title, detail) in enumerate(product_info[:100], start=1):
+        print(f"{idx}. Title: {title}\n   Product: {detail}\n")
         try:
-            # Find the product description link using the product title
-            description_link = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, f'//div[contains(@class, "ProductCard_title__9M6wy") and contains(text(), "{title}")]/parent::div/parent::div/parent::a'))
+            # Find the product description element using the product title
+            description_element = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, f'//div[contains(@class, "ProductCard_title__9M6wy") and contains(text(), "{title}")]/ancestor::div[contains(@class, "ProductCard_productInfo__uZhFN")]'))
             )
-            # Open the product description in a new tab
-            driver.execute_script("arguments[0].scrollIntoView();", description_link)
-            description_link.send_keys(Keys.CONTROL + Keys.RETURN)
-            print("Opened product description in a new tab.")
-            # Wait for 2 seconds
+
+            # Open the product detail by clicking on the element
+            description_element.click()
+            print("Opened product description.")
+
+            # Wait for the new tab to open
             time.sleep(2)
-            # Close the new tab
+
+            # Switch to the new tab
             driver.switch_to.window(driver.window_handles[-1])
+            print("Switched to new tab.")
+
+            # Scraping the product description from the new tab using CSS selector
+            product_description_element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '#__next > main > div > div:nth-child(1) > div > div.col-sm-5.col-md-5.col-lg-5 > div > div.PDPDetails_prodDescDetails__D7ddV > div.ProductDetails_container__0vRlj.ProductDetails_AS__WcrW_ > p.MuiTypography-root.MuiTypography-body1.ProductDetails_description__7hqm9.css-12a9y8i'))
+            )
+            product_description = product_description_element.text.strip()
+
+            # Append scraped data to the list
+            data.append(('Allen Solly', 'Men', title, detail, product_description))
+
+            # Close the new tab
             driver.close()
+            print("Closed new tab.")
+
+            # Switch back to the original tab
             driver.switch_to.window(driver.window_handles[0])
-            print("Closed the new tab.")
+            print("Switched back to the original tab.")
+
+            # Wait for the page to reload
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, f'//div[contains(@class, "ProductCard_title__9M6wy") and contains(text(), "{title}")]'))
+            )
         except Exception as e:
-            print(f"Error occurred while processing product description: {str(e)}")
+            print(f"Error occurred while processing product detail: {str(e)}")
+
+    # Convert the scraped data into a pandas DataFrame
+    df = pd.DataFrame(data, columns=['Brand', 'Category', 'Title', 'Product Detail', 'Product Description'])
+
+    # Export the DataFrame to an Excel file
+    df.to_excel('scraped_data.xlsx', index=False)
 
 finally:
     driver.quit()
